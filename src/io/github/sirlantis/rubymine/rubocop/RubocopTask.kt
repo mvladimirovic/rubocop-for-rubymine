@@ -1,5 +1,6 @@
 package io.github.sirlantis.rubymine.rubocop
 
+import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.progress.ProgressIndicator
@@ -21,6 +22,7 @@ import org.jetbrains.plugins.ruby.ruby.run.RunnerUtil
 import io.github.sirlantis.rubymine.rubocop.utils.NotifyUtil
 import org.jetbrains.plugins.ruby.gem.util.BundlerUtil
 import org.jetbrains.plugins.ruby.gem.util.GemSearchUtil
+import java.io.File
 
 class RubocopTask(val module: Module, val paths: List<String>) : Task.Backgroundable(module.project, "Running RuboCop", true) {
 
@@ -155,20 +157,22 @@ class RubocopTask(val module: Module, val paths: List<String>) : Task.Background
     }
 
     fun runViaCommandLine(sdk: Sdk) {
-        val runner = RunnerUtil.getRunner(sdk, module)
+        val commandLine = GeneralCommandLine()
+        commandLine.setWorkDirectory(workDirectory.getCanonicalPath())
 
-        val commandLineList = linkedListOf("rubocop", "--format", "json")
-        commandLineList.addAll(paths)
+        val parts = mutableListOf("rubocop", "--format", "json")
+        parts.addAll(paths)
 
-        val command = commandLineList.removeFirst()
-        val args = commandLineList.toTypedArray()
-        val sudo = false
+        var command = parts.removeAt(0)
 
-        val commandLine = runner.createAndSetupCmdLine(workDirectory.canonicalPath!!, null, true, command, sdk, sudo, *args)
-        val preprocessor = BundlerUtil.createBundlerPreprocessor(module, sdk)
-        preprocessor.preprocess(commandLine)
+        val versionFolder = File(sdk.getHomePath()).getParentFile().getParentFile()
+        val rbenvRoot = versionFolder.getParentFile().getParentFile()
+        val commandPath = File(File(rbenvRoot, "shims"), command).canonicalPath
 
-        logger.debug("Executing RuboCop (SDK=%s)".format(sdkRoot), commandLine.commandLineString)
+        commandLine.setExePath(commandPath)
+        commandLine.addParameters(parts)
+
+        logger.debug("Executing RuboCop", commandLine.getCommandLineString())
 
         parseProcessOutput { commandLine.createProcess() }
     }
